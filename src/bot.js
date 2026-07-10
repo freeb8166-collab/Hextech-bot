@@ -1,299 +1,529 @@
+// ═══════════════════════════════════════════════════════════════
+// 📦 BOT.JS - HEXGATE V3 - WhatsApp Bot Multi-Sessions
+// ═══════════════════════════════════════════════════════════════
+
 const {
   default: makeWASocket,
   useMultiFileAuthState,
+  downloadContentFromMessage,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
   Browsers,
   delay,
-} = require('baileys');
+  getContentType
+} = require("@whiskeysockets/baileys");
 
-// Codes qui déclenchent reconnexion (pas logout)
-const RECONNECT_CODES = new Set([405, 408, 503, 428, 500, 502]);
-const pino = require('pino');
-const fs = require('fs-extra');
-const path = require('path');
-const config = require('./config');
-const store = require('./lib/store');
-const { messageHandler } = require('./handlers/message');
-const { setupStatusHandlers } = require('./handlers/status');
+const P = require("pino");
+const fs = require("fs");
+const path = require("path");
+const { exec } = require("child_process");
 
-const logger = pino({ level: 'silent' });
-const pendingSockets = new Map();
-const msgCaches = new Map();
-const watchdogs = new Map();
+// ==================== COULEURS POUR LE TERMINAL ====================
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m'
+};
 
-const FALLBACK_VERSION = [2, 3000, 1023596128];
+// ==================== CONFIGURATION ====================
+const config = {
+  prefix: ",",
+  ownerNumber: "243819069962",
+  botPublic: true,
+  fakeRecording: false,
+  fakeTyping: false,
+  antiLink: false,
+  alwaysOnline: true,
+  logLevel: "silent",
+  maxSessions: 3,
+  botImageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScDteMn6Vx9AffrVZG2S7NDAPotzYSzqILpbhc6GpqwYoTh1jQX-mobTYA&s=10",
+  channelLink: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o",
+  autoJoinGroup: "https://chat.whatsapp.com/Dn9AwwsTtaFG4Z0giysIVJ",
+  autoJoinChannel: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o"
+};
 
-async function getVersion() {
+// ==================== VARIABLES GLOBALES ====================
+let sock = null;
+let botReady = false;
+let botStartTime = Date.now();
+let isConnecting = false;
+const userSessions = new Map();
+const MAX_SESSIONS = config.maxSessions || 3;
+
+// ==================== FONCTIONS PRINCIPALES ====================
+
+/**
+ * Démarre le bot WhatsApp
+ */
+async function startBot() {
+  if (isConnecting) {
+    console.log(`${colors.yellow}⚠️ Connexion déjà en cours...${colors.reset}`);
+    return;
+  }
+  
+  isConnecting = true;
+  
   try {
+    console.log(`${colors.cyan}🚀 Démarrage du bot...${colors.reset}`);
+    
+    const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
     const { version } = await fetchLatestBaileysVersion();
-    console.log('[BOT] WhatsApp version:', version.join('.'));
-    return version;
-  } catch (e) {
-    console.log('[BOT] fetchLatestBaileysVersion failed → fallback version');
-    return FALLBACK_VERSION;
+    
+    sock = makeWASocket({
+      version,
+      logger: P({ level: config.logLevel }),
+      printQRInTerminal: false,
+      auth: state,
+      browser: Browsers.ubuntu("Chrome"),
+      markOnlineOnConnect: config.alwaysOnline,
+      syncFullHistory: false,
+    });
+
+    sock.ev.on("creds.update", saveCreds);
+
+    sock.ev.on("connection.update", async (update) => {
+      const { connection, lastDisconnect } = update;
+      
+      if (connection === "close") {
+        const reason = new Error(lastDisconnect?.error)?.output?.statusCode;
+        botReady = false;
+        isConnecting = false;
+        
+        if (reason === DisconnectReason.loggedOut) {
+          console.log(`${colors.red}❌ Déconnecté, nettoyage...${colors.reset}`);
+          exec("rm -rf auth_info_baileys", () => {
+            setTimeout(startBot, 3000);
+          });
+        } else {
+          console.log(`${colors.yellow}⚠️ Reconnexion dans 5s...${colors.reset}`);
+          setTimeout(startBot, 5000);
+        }
+        return;
+      }
+      
+      if (connection === "open") {
+        console.log(`${colors.green}✅ Bot connecté à WhatsApp !${colors.reset}`);
+        botReady = true;
+        isConnecting = false;
+        botStartTime = Date.now();
+        
+        // Notifier le propriétaire
+        await sendMessageToOwner(`✅ *HEXGATE V3 EN LIGNE*
+
+🚀 Bot prêt à l'emploi !
+📊 Commandes disponibles
+🔗 Canal: ${config.channelLink}`);
+      }
+    });
+
+    // ==================== TRAITEMENT DES MESSAGES ====================
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message) return;
+      
+      const from = msg.key.remoteJid;
+      let sender = msg.key.participant || msg.key.remoteJid;
+      
+      if (sender && sender.includes(':')) sender = sender.split(':')[0];
+      
+      const isOwner = sender === `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+      const messageType = Object.keys(msg.message)[0];
+      
+      // Ignorer les messages du bot
+      if (sock.user && sender === sock.user.id) return;
+      if (messageType === "protocolMessage") return;
+      
+      // Extraire le texte
+      let body = "";
+      if (messageType === "conversation") body = msg.message.conversation;
+      else if (messageType === "extendedTextMessage") body = msg.message.extendedTextMessage.text;
+      else if (messageType === "imageMessage") body = msg.message.imageMessage?.caption || "";
+      else if (messageType === "videoMessage") body = msg.message.videoMessage?.caption || "";
+      else return;
+      
+      // Vérifier si c'est une commande
+      if (!body.startsWith(config.prefix)) return;
+      
+      const args = body.slice(config.prefix.length).trim().split(/ +/);
+      const command = args.shift().toLowerCase();
+      
+      console.log(`${colors.cyan}📨 Commande reçue: ${command}${colors.reset}`);
+      
+      // Exécuter la commande
+      await executeCommand(command, sock, msg, args, { isOwner, sender });
+    });
+    
+    // ==================== ÉVÉNEMENTS GROUPE ====================
+    sock.ev.on("group-participants.update", async (update) => {
+      if (update.action !== "add") return;
+      
+      const groupJid = update.id;
+      const newMember = update.participants[0];
+      const memberName = newMember.split("@")[0];
+      
+      await sendWithButtons(sock, groupJid, 
+        `👋 *BIENVENUE ${memberName}*
+
+📢 Canal: ${config.channelLink}
+> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`,
+        [newMember]
+      );
+    });
+    
+    return sock;
+    
+  } catch (error) {
+    console.log(`${colors.red}❌ Erreur démarrage bot: ${error.message}${colors.reset}`);
+    isConnecting = false;
+    botReady = false;
+    setTimeout(startBot, 5000);
+    return null;
   }
 }
 
-function getBrowserValue() {
-  if (typeof Browsers?.macOS === 'function') return Browsers.macOS('Safari');
-  if (Array.isArray(Browsers?.macOS)) return Browsers.macOS;
-  return ['Ubuntu', 'Chrome', '22.0.0'];
-}
+// ==================== COMMANDES ====================
 
-function clearWatchdog(sanitized) {
-  if (watchdogs.has(sanitized)) {
-    clearInterval(watchdogs.get(sanitized));
-    watchdogs.delete(sanitized);
-  }
-}
-
-async function startSession(number) {
-  const sanitized = number.replace(/[^0-9]/g, '');
-  const sessionPath = path.join(config.SESSION_BASE_PATH, sanitized);
-
-  fs.ensureDirSync(sessionPath);
-  // Note: on ne supprime jamais les fichiers de session automatiquement
-  // (Render filesystem éphémère — les sessions sont dans SESSION_BASE_PATH)
-
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-  const version = await getVersion();
-
-  const msgRetryCounterMap = new Map();
-  if (!msgCaches.has(sanitized)) msgCaches.set(sanitized, new Map());
-  const msgCache = msgCaches.get(sanitized);
-
-  const sock = makeWASocket({
-    version,
-    logger,
-    printQRInTerminal: false,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger),
-    },
-    browser: getBrowserValue(),
-    connectTimeoutMs: 30000,
-    defaultQueryTimeoutMs: 30000,
-    keepAliveIntervalMs: 10000,
-    retryRequestDelayMs: 250,
-    generateHighQualityLinkPreview: false,
-    markOnlineOnConnect: true,
-    syncFullHistory: false,
-    msgRetryCounterMap,
-    getMessage: async (key) => {
-      const cached = msgCache.get(key.id);
-      if (cached) return cached;
-      return { conversation: '' };
-    },
-  });
-
-  pendingSockets.set(sanitized, sock);
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('messages.upsert', async ({ messages: msgs, type }) => {
-    for (const m of msgs) {
-      if (m.message && m.key?.id) {
-        msgCache.set(m.key.id, m.message);
-        if (msgCache.size > 500) {
-          msgCache.delete(msgCache.keys().next().value);
-        }
+async function executeCommand(command, sock, msg, args, context) {
+  const from = msg.key.remoteJid;
+  
+  switch (command) {
+    // ========== PING ==========
+    case 'ping':
+      const start = Date.now();
+      await simulateTyping(sock, from);
+      const latency = Date.now() - start;
+      await sendWithButtons(sock, from, 
+        `🏓 *PONG!*\n\n📡 Latence: ${latency}ms\n🤖 Bot: ${botReady ? '✅ En ligne' : '⏳ En attente...'}\n⏰ Uptime: ${Math.floor((Date.now() - botStartTime) / 1000)}s\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`
+      );
+      break;
+    
+    // ========== STATUS ==========
+    case 'status':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
       }
-    }
-    messageHandler(sock, { messages: msgs, type }).catch(e =>
-      console.error(`[${sanitized}] messageHandler error:`, e.message)
-    );
-  });
+      const statusText = `
+📊 *STATUT DU BOT*
 
-  setupStatusHandlers(sock);
-
-  sock.ev.on('group-participants.update', async (update) => {
-    try {
-      const { id, participants, action } = update;
-      const meta = await sock.groupMetadata(id);
-      for (const jid of participants) {
-        const num = jid.split('@')[0];
-        if (action === 'add') {
-          await sock.sendMessage(id, {
-            image: { url: config.MENU_IMAGE },
-            caption: `╔╦══════════════════╦╗\n║║   *WELCOME* 🎉   ║║\n╚╩══════════════════╩╝\n\n👋 Welcome @${num} to *${meta.subject}*!\n\nWe're glad to have you here. Please read the group rules.\n\n_Powered by DENTSU MD V9_`,
-            mentions: [jid],
-          });
-        } else if (action === 'remove') {
-          await sock.sendMessage(id, {
-            image: { url: config.MENU_IMAGE },
-            caption: `╔╦══════════════════╦╗\n║║   *GOODBYE* 👋   ║║\n╚╩══════════════════╩╝\n\n😢 @${num} has left *${meta.subject}*.\n\nWe'll miss you! Come back anytime.\n\n_Powered by DENTSU MD V9_`,
-            mentions: [jid],
-          });
-        }
+🏷️ Nom: HEXGATE V3
+🟢 Statut: ${botReady ? 'CONNECTÉ ✅' : 'DÉCONNECTÉ ❌'}
+📊 Sessions: ${userSessions.size}/${MAX_SESSIONS}
+⏰ Uptime: ${Math.floor((Date.now() - botStartTime) / 1000)}s
+🎤 Fake Recording: ${config.fakeRecording ? 'ON' : 'OFF'}
+✍️ Fake Typing: ${config.fakeTyping ? 'ON' : 'OFF'}
+🔗 Canal: ${config.channelLink}
+> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`;
+      await sendWithButtons(sock, from, statusText);
+      break;
+    
+    // ========== FAKERECORDING ==========
+    case 'fakerecording':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
       }
-    } catch (e) {
-      console.log(`[group-participants] Error:`, e.message);
-    }
-  });
-
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === 'open') {
-      console.log(`[${sanitized}] ✅ Connected!`);
-      pendingSockets.delete(sanitized);
-      store.setSession(sanitized, { sock, number: sanitized, connectedAt: Date.now() });
-
-      // FIX: Annonce présence immédiatement → WhatsApp route les messages au bot dès maintenant
-      try { await sock.sendPresenceUpdate('available'); } catch (_) {}
-
-      // ── MESSAGE DE BIENVENUE (envoyé au proprio dès connexion) ──
-      setTimeout(async () => {
-        try {
-          const now = new Date();
-          const date = now.toLocaleDateString('fr-FR', {
-            day: '2-digit', month: '2-digit', year: 'numeric'
-          });
-          const heure = now.toLocaleTimeString('fr-FR', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-          });
-          const pushName = sock.user?.name || sock.user?.verifiedName || sanitized;
-          const selfJid = sanitized + '@s.whatsapp.net';
-          const welcome =
-`╭───────────────────
-• DENTSU MD V9 ACTIF 🟢
-
-• 📆DATE : ${date}
-• ⌚HEURE : ${heure}
-• 🤳SESSION : ${sanitized}
-• 📟NUMBER : +${sanitized}
-• ✍️NAMEUSER : ${pushName}
-• 🚀BOT LINK : https://dentsu-md-v9.onrender.com
-> BY NATSUTECH'S PROJECT 
-╰───────────────────`;
-          await sock.sendMessage(selfJid, { text: welcome });
-        } catch (_) {}
-      }, 2500);
-
-      // ── WATCHDOG: détecte les connexions zombie ───────────────
-      // Toutes les 45s, envoie un ping léger à WhatsApp.
-      // Si ça échoue, la session est zombie → reconnexion forcée.
-      clearWatchdog(sanitized);
-      let _wdFails = 0;
-      const wd = setInterval(async () => {
-        if (!store.getSession(sanitized)) { clearWatchdog(sanitized); return; }
-        try {
-          await Promise.race([
-            sock.sendPresenceUpdate('available'),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000)),
-          ]);
-          _wdFails = 0; // reset sur succès
-        } catch (e) {
-          _wdFails++;
-          console.log(`[${sanitized}] ⚠️ Watchdog échec ${_wdFails}/3...`);
-          if (_wdFails >= 3) {
-            // 3 échecs consécutifs = zombie confirmé → reconnexion
-            console.log(`[${sanitized}] 🔴 Zombie confirmé après 3 échecs, reconnexion...`);
-            clearWatchdog(sanitized);
-            store.deleteSession(sanitized);
-            try { sock.end(new Error('watchdog')); } catch (_) {}
-            setTimeout(() => reconnectSession(sanitized), 3000);
-          }
-        }
-      }, 45000);
-      watchdogs.set(sanitized, wd);
-
-      return;
-    }
-
-    if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const reason = lastDisconnect?.error?.output?.payload?.error || statusCode;
-      console.log(`[${sanitized}] Connection closed. Reason: ${reason} (code: ${statusCode})`);
-
-      clearWatchdog(sanitized);
-      pendingSockets.delete(sanitized);
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        store.deleteSession(sanitized);
-        fs.removeSync(sessionPath);
-        msgCaches.delete(sanitized);
-        console.log(`[${sanitized}] Session deleted (logout)`);
-      } else if (statusCode === DisconnectReason.restartRequired || statusCode === 515) {
-        // BUG FIX: supprimer la session du store avant de reconnecter,
-        // sinon reconnectSession() voit l'ancienne session morte et abandonne.
-        store.deleteSession(sanitized);
-        console.log(`[${sanitized}] Restart required, reconnecting in 2s...`);
-        setTimeout(() => reconnectSession(sanitized), 2000);
-      } else if (RECONNECT_CODES && RECONNECT_CODES.has(statusCode)) {
-        store.deleteSession(sanitized);
-        console.log(`[${sanitized}] Code ${statusCode} → reconnexion dans 8s...`);
-        setTimeout(() => reconnectSession(sanitized), 8000);
+      const recState = args[0]?.toLowerCase();
+      if (recState === 'on') {
+        config.fakeRecording = true;
+        await sendWithButtons(sock, from, "🎤 *Fake Recording ACTIVÉ*");
+      } else if (recState === 'off') {
+        config.fakeRecording = false;
+        await sendWithButtons(sock, from, "🎤 *Fake Recording DÉSACTIVÉ*");
       } else {
-        store.deleteSession(sanitized);
-        console.log(`[${sanitized}] Reconnecting in 5s...`);
-        setTimeout(() => reconnectSession(sanitized), 5000);
+        await sendWithButtons(sock, from, "❌ Usage: .fakerecording on/off");
       }
-    }
-  });
-
-  if (!sock.authState.creds.registered) {
-    await delay(3000);
-    try {
-      console.log(`[${sanitized}] Requesting pairing code (version ${version.join('.')})...`);
-      const code = await sock.requestPairingCode(sanitized);
-      const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-      console.log(`[${sanitized}] ✅ Code: ${formattedCode}`);
-
-      setTimeout(() => {
-        if (pendingSockets.has(sanitized)) {
-          console.log(`[${sanitized}] Pairing timeout (5min), cleaning pending socket`);
-          pendingSockets.delete(sanitized);
+      break;
+    
+    // ========== FAKETYPING ==========
+    case 'faketyping':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
+      }
+      const typeState = args[0]?.toLowerCase();
+      if (typeState === 'on') {
+        config.fakeTyping = true;
+        await sendWithButtons(sock, from, "✍️ *Fake Typing ACTIVÉ*");
+      } else if (typeState === 'off') {
+        config.fakeTyping = false;
+        await sendWithButtons(sock, from, "✍️ *Fake Typing DÉSACTIVÉ*");
+      } else {
+        await sendWithButtons(sock, from, "❌ Usage: .faketyping on/off");
+      }
+      break;
+    
+    // ========== PUBLIC / PRIVATE ==========
+    case 'public':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
+      }
+      config.botPublic = true;
+      await sendWithButtons(sock, from, "🌐 *MODE PUBLIC ACTIVÉ*\n\nTout le monde peut utiliser le bot.");
+      break;
+    
+    case 'private':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
+      }
+      config.botPublic = false;
+      await sendWithButtons(sock, from, "🔒 *MODE PRIVÉ ACTIVÉ*\n\nSeul le propriétaire peut utiliser le bot.");
+      break;
+    
+    // ========== PAIR (Génération de code) ==========
+    case 'pair':
+      if (!args[0]) {
+        await sendWithButtons(sock, from, 
+          `🔐 *COMMANDE .PAIR*\n\nUtilisation: .pair [numéro]\n\nExemple: .pair 243XXXXXXXXX\n\n📊 Sessions: ${userSessions.size}/${MAX_SESSIONS}\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`
+        );
+        return;
+      }
+      
+      if (!botReady) {
+        await sendWithButtons(sock, from, "⏳ *Bot en cours de connexion...*\n\nVeuillez patienter quelques secondes et réessayer.\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩");
+        return;
+      }
+      
+      if (userSessions.size >= MAX_SESSIONS) {
+        await sendWithButtons(sock, from, `⚠️ *LIMITE ATTEINTE*\n\nMaximum ${MAX_SESSIONS} sessions.\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`);
+        return;
+      }
+      
+      const phoneNumber = args[0].replace(/\D/g, '');
+      
+      if (userSessions.has(phoneNumber)) {
+        await sendWithButtons(sock, from, `⚠️ Session déjà existante pour +${phoneNumber}`);
+        return;
+      }
+      
+      try {
+        await sendWithButtons(sock, from, `⏳ Génération du code pour +${phoneNumber}...`);
+        const code = await sock.requestPairingCode(phoneNumber);
+        
+        if (code) {
+          userSessions.set(phoneNumber, { number: phoneNumber, createdAt: Date.now() });
+          await sendWithButtons(sock, from, 
+            `🔐 *CODE DE CONNEXION*\n\n✅ Code généré pour +${phoneNumber}\n📱 Code: *${code}*\n\n⚠️ Entrez ce code dans WhatsApp > Appareils liés > Lier un appareil\n\n📊 Sessions: ${userSessions.size}/${MAX_SESSIONS}\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`
+          );
+          console.log(`${colors.green}✅ Code généré pour ${phoneNumber}${colors.reset}`);
+        } else {
+          await sendWithButtons(sock, from, "❌ Erreur: Impossible de générer le code.");
         }
-      }, 5 * 60 * 1000);
+      } catch (error) {
+        await sendWithButtons(sock, from, `❌ *ERREUR*\n\n${error.message}\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`);
+      }
+      break;
+    
+    // ========== MENU ==========
+    case 'menu':
+    case 'help':
+      const menuText = `
+┏━━❖ ＡＲＣＡＮＥ ❖━━┓
+┃ 🛡️ HEX✦GATE V3
+┃ 👨‍💻 Dev: @${config.ownerNumber}
+┗━━━━━━━━━━━━━━━━
 
-      return { sock, code: formattedCode };
-    } catch (err) {
-      const realError = err?.message || String(err);
-      console.error(`[${sanitized}] requestPairingCode error:`, realError);
-      pendingSockets.delete(sanitized);
-      try { sock.end(); } catch (_) {}
-      throw new Error(`Pairing code failed: ${realError}`);
-    }
+╭━━〔 COMMANDES 〕━━┈⊷
+┃✰│➫ ${config.prefix}ping - Test
+┃✰│➫ ${config.prefix}status - Statut
+┃✰│➫ ${config.prefix}menu - Menu
+┃✰│➫ ${config.prefix}pair [numéro]
+┃✰│➫ ${config.prefix}fakerecording on/off
+┃✰│➫ ${config.prefix}faketyping on/off
+┃✰│➫ ${config.prefix}public / private
+┃✰│➫ ${config.prefix}sessions
+┃✰│➫ ${config.prefix}removesession [numéro]
+╰━━━━━━━━━━━━━━━┈⊷
+
+🔗 Canal: ${config.channelLink}
+> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`;
+      await sendWithButtons(sock, from, menuText, [], config.botImageUrl);
+      break;
+    
+    // ========== SESSIONS ==========
+    case 'sessions':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
+      }
+      let sessionList = `📊 *SESSIONS ACTIVES*\n\n📌 Total: ${userSessions.size}/${MAX_SESSIONS}\n\n`;
+      if (userSessions.size === 0) {
+        sessionList += "Aucune session active.";
+      } else {
+        let i = 1;
+        for (const [id, data] of userSessions.entries()) {
+          sessionList += `${i}. 📱 +${id}\n   ⏰ ${new Date(data.createdAt).toLocaleString()}\n\n`;
+          i++;
+        }
+      }
+      sessionList += `\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`;
+      await sendWithButtons(sock, from, sessionList);
+      break;
+    
+    // ========== REMOVE SESSION ==========
+    case 'removesession':
+      if (!context.isOwner) {
+        await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
+        return;
+      }
+      if (!args[0]) {
+        await sendWithButtons(sock, from, "❌ Usage: .removesession [numéro]");
+        return;
+      }
+      const sessionId = args[0].replace(/\D/g, '');
+      if (!userSessions.has(sessionId)) {
+        await sendWithButtons(sock, from, `❌ Aucune session pour +${sessionId}`);
+        return;
+      }
+      userSessions.delete(sessionId);
+      await sendWithButtons(sock, from, `✅ Session supprimée pour +${sessionId}\n\n📊 Restant: ${userSessions.size}/${MAX_SESSIONS}`);
+      break;
+    
+    default:
+      // Commande non reconnue
+      break;
   }
-
-  pendingSockets.delete(sanitized);
-  store.setSession(sanitized, { sock, number: sanitized, connectedAt: Date.now() });
-  return { sock, code: null };
 }
 
-async function reconnectSession(sanitized) {
-  const sessionPath = path.join(config.SESSION_BASE_PATH, sanitized);
-  if (!fs.existsSync(sessionPath)) return;
-  if (store.getSession(sanitized)) return;
-  try {
-    await startSession(sanitized);
-  } catch (e) {
-    console.error(`[${sanitized}] Reconnection error:`, e.message);
-    setTimeout(() => reconnectSession(sanitized), 15000);
-  }
-}
+// ==================== FONCTIONS UTILITAIRES ====================
 
-async function startExistingSessions() {
-  if (!fs.existsSync(config.SESSION_BASE_PATH)) return;
-  const dirs = fs.readdirSync(config.SESSION_BASE_PATH).filter(d => {
-    const p = path.join(config.SESSION_BASE_PATH, d);
-    return fs.statSync(p).isDirectory() && fs.readdirSync(p).length > 0;
-  });
-  console.log(`[BOT] ${dirs.length} existing session(s) to restore`);
-  for (const dir of dirs) {
+/**
+ * Simule l'écriture (fake typing)
+ */
+async function simulateTyping(sock, jid) {
+  if (config.fakeTyping) {
     try {
-      await startSession(dir);
-      await delay(2000);
-    } catch (e) {
-      console.error(`[BOT] Session error ${dir}:`, e.message);
-    }
+      await sock.sendPresenceUpdate('composing', jid);
+      await delay(Math.floor(Math.random() * 2000) + 500);
+      await sock.sendPresenceUpdate('paused', jid);
+    } catch (error) {}
   }
 }
 
-function startBot() {
-  startExistingSessions();
+/**
+ * Simule l'enregistrement (fake recording)
+ */
+async function simulateRecording(sock, jid) {
+  if (config.fakeRecording) {
+    try {
+      await sock.sendPresenceUpdate('recording', jid);
+      await delay(Math.floor(Math.random() * 5000) + 2000);
+      await sock.sendPresenceUpdate('available', jid);
+    } catch (error) {}
+  }
 }
 
-module.exports = { startBot, startSession };
+/**
+ * Envoie un message avec image et mentions
+ */
+async function sendWithButtons(sock, jid, text, mentions = [], imageUrl = null) {
+  try {
+    const finalImageUrl = imageUrl || config.botImageUrl;
+    const finalMentions = mentions || [];
+    
+    // Ajouter le propriétaire dans les mentions
+    const ownerJid = `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+    if (!finalMentions.includes(ownerJid)) {
+      finalMentions.push(ownerJid);
+    }
+    
+    const content = {
+      image: { url: finalImageUrl },
+      caption: text,
+      mentions: finalMentions,
+      contextInfo: {
+        forwardingScore: 2,
+        isForwarded: true
+      }
+    };
+    
+    return await sock.sendMessage(jid, content);
+  } catch (error) {
+    console.log(`${colors.yellow}⚠️ Erreur envoi image, fallback texte: ${error.message}${colors.reset}`);
+    return await sock.sendMessage(jid, { text });
+  }
+}
+
+/**
+ * Envoie un message au propriétaire
+ */
+async function sendMessageToOwner(text) {
+  try {
+    if (!sock) return;
+    const ownerJid = `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+    await sendWithButtons(sock, ownerJid, text);
+  } catch (error) {
+    console.log(`${colors.yellow}⚠️ Erreur notification owner: ${error.message}${colors.reset}`);
+  }
+}
+
+/**
+ * Vérifie si le bot est prêt
+ */
+function isBotReady() {
+  return botReady;
+}
+
+/**
+ * Génère un code de pairage (pour l'API)
+ */
+async function generatePairCode(phone) {
+  if (!sock || !botReady) {
+    throw new Error('Bot pas encore prêt');
+  }
+  const cleanPhone = phone.replace(/\D/g, '');
+  return await sock.requestPairingCode(cleanPhone);
+}
+
+/**
+ * Récupère les sessions actives
+ */
+function getSessions() {
+  return userSessions;
+}
+
+/**
+ * Récupère la configuration
+ */
+function getConfig() {
+  return config;
+}
+
+/**
+ * Attendre que le bot soit prêt (Promise)
+ */
+function waitForBotReady(timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (botReady) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeout) {
+        clearInterval(checkInterval);
+        reject(new Error('Timeout: Bot pas prêt après ' + timeout + 'ms'));
+      }
+    }, 1000);
+  });
+}
+
+// ==================== EXPORTS ====================
+module.exports = {
+  startBot,
+  isBotReady,
+  generatePairCode,
+  getSessions,
+  getConfig,
+  waitForBotReady,
+  bot: sock,
+  botReady
+};
