@@ -1,35 +1,23 @@
-require('dotenv').config();
-const { startBot } = require('./src/bot');
-const { startWebServer } = require('./src/web');
+// index.js - Point d'entrée principal
+const { startWebServer } = require('./web');
+const { startBot } = require('./bot');
 
-console.log(`
-╔═══════════════════════════════════════╗
-║       DENTSU MD V9 - Natsu Tech       ║
-║    Multi-Session WhatsApp Bot v9.0    ║
-╚═══════════════════════════════════════╝
-`);
+console.log('╔═══════════════════════════════════════════════╗');
+console.log('║   🚀 mortal MD V9 - WhatsApp Bot            ║');
+console.log('║   📱 Démarrage en cours...                  ║');
+console.log('╚═══════════════════════════════════════════════╝');
 
-// ==================== DÉMARRAGE ====================
+// Lancer le bot WhatsApp
+startBot();
 
-// Démarrer le BOT en premier
-console.log('🚀 Démarrage du bot...');
-startBot().then(() => {
-  console.log('✅ Bot initialisé');
-}).catch((error) => {
-  console.error('❌ Erreur démarrage bot:', error.message);
-});
+// Lancer le serveur web
+startWebServer();
 
-// Démarrer le serveur web après un court délai
-setTimeout(() => {
-  console.log('🌐 Démarrage du serveur web...');
-  startWebServer();
-}, 2000);
-
-// ==================== GESTION DES ERREURS ====================
-process.on('uncaughtException', (error) => {
-  console.error('❌ Erreur non capturée:', error.message);
+// Gestion des erreurs non capturées
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Promesse rejetée:', reason);
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
