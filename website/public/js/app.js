@@ -1,0 +1,78 @@
+// app.js - Frontend JavaScript (website/public/js/app.js)
+
+// ═══ TRADUCTIONS — 10 LANGUES ═══
+const TRANSLATIONS = {
+  fr: {
+    h2_connect: '📱 Connecter WhatsApp',
+    subtitle_connect: 'Entre ton numéro avec le code pays pour obtenir ton code de jumelage',
+    hint: '⚠️ Inclure le code pays sans le + (ex: <strong>242</strong>XXXXXXXX)',
+    btn_pair: '📲 Obtenir mon code',
+    btn_pair_loading: '⏳ Génération du code...',
+    btn_copy: '📋 Copier le code',
+    btn_copied: '✅ Copié !',
+    code_label: '🔑 Ton code de jumelage :',
+    steps_title: '📋 Comment entrer le code dans WhatsApp :',
+    warning: '⏱️ Le code expire dans <strong>60 secondes</strong> — entre-le rapidement !',
+    social_channel: '📢 Canal',
+    social_group: '👥 Groupe',
+    footer: '© 2025 NatsuTech • Tous droits réservés',
+    error_invalid: 'Entre un numéro valide avec le code pays. Ex: 242065121108',
+    error_network: 'Erreur réseau. Vérifie ta connexion et réessaie.',
+    success_code: 'Code généré ! Suis les étapes ci-dessous 👇',
+    success_already: '✅ Déjà connecté !',
+    error_unknown: 'Erreur inconnue',
+    steps: [
+      'Ouvre <strong>WhatsApp</strong> sur ton téléphone',
+      'Appuie sur les <strong>3 points</strong> (menu) en haut à droite',
+      'Va dans <strong>Appareils liés</strong>',
+      'Appuie sur <strong>Lier un appareil</strong>',
+      'Choisis <strong>"Lier avec un numéro de téléphone"</strong> (pas le QR)',
+      'Entre le code <strong id="codeInSteps"></strong> affiché ci-dessus',
+      '✅ Le bot se connecte automatiquement !'
+    ]
+  },
+  en: {
+    h2_connect: '📱 Connect WhatsApp',
+    subtitle_connect: 'Enter your number with country code to get your pairing code',
+    hint: '⚠️ Include country code without + (e.g. <strong>242</strong>XXXXXXXX)',
+    btn_pair: '📲 Get my code',
+    btn_pair_loading: '⏳ Generating code...',
+    btn_copy: '📋 Copy code',
+    btn_copied: '✅ Copied!',
+    code_label: '🔑 Your pairing code:',
+    steps_title: '📋 How to enter the code in WhatsApp:',
+    warning: '⏱️ The code expires in <strong>60 seconds</strong> — enter it quickly!',
+    social_channel: '📢 Channel',
+    social_group: '👥 Group',
+    footer: '© 2025 NatsuTech • All rights reserved',
+    error_invalid: 'Enter a valid number with country code. Ex: 242065121108',
+    error_network: 'Network error. Check your connection and try again.',
+    success_code: 'Code generated! Follow the steps below 👇',
+    success_already: '✅ Already connected!',
+    error_unknown: 'Unknown error',
+    steps: [
+      'Open <strong>WhatsApp</strong> on your phone',
+      'Tap the <strong>3 dots</strong> (menu) at the top right',
+      'Go to <strong>Linked Devices</strong>',
+      'Tap <strong>Link a Device</strong>',
+      'Choose <strong>"Link with phone number"</strong> (not QR)',
+      'Enter the code <strong id="codeInSteps"></strong> shown above',
+      '✅ The bot connects automatically!'
+    ]
+  },
+  es: {
+    h2_connect: '📱 Conectar WhatsApp',
+    subtitle_connect: 'Introduce tu número con el código de país para obtener tu código',
+    hint: '⚠️ Incluye el código de país sin el + (ej: <strong>242</strong>XXXXXXXX)',
+    btn_pair: '📲 Obtener mi código',
+    btn_pair_loading: '⏳ Generando código...',
+    btn_copy: '📋 Copiar código',
+    btn_copied: '✅ ¡Copiado!',
+    code_label: '🔑 Tu código de emparejamiento:',
+    steps_title: '📋 Cómo ingresar el código en WhatsApp:',
+    warning: '⏱️ El código expira en <strong>60 segundos</strong> — ¡ingrésalo rápido!',
+    social_channel: '📢 Canal',
+    social_group: '👥 Grupo',
+    footer: '© 2025 NatsuTech • Todos los derechos reservados',
+    error_invalid: 'Introduce un número válido con código de país. Ej: 242065121108',
+    error_
