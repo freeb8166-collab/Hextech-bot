@@ -1,0 +1,18 @@
+{
+  "name": "dentsu-md-frontend",
+  "version": "1.0.0",
+  "description": "DENTSU MD V9 - Frontend Interface",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
