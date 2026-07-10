@@ -35,14 +35,14 @@ const colors = {
 // ==================== CONFIGURATION ====================
 const config = {
   prefix: ",",
-  ownerNumber: "243819069962",
+  ownerNumber: "243825114883",
   botPublic: true,
   fakeRecording: false,
   fakeTyping: false,
   antiLink: false,
   alwaysOnline: true,
   logLevel: "silent",
-  maxSessions: 3,
+  maxSessions: 32,
   botImageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScDteMn6Vx9AffrVZG2S7NDAPotzYSzqILpbhc6GpqwYoTh1jQX-mobTYA&s=10",
   channelLink: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o",
   autoJoinGroup: "https://chat.whatsapp.com/Dn9AwwsTtaFG4Z0giysIVJ",
