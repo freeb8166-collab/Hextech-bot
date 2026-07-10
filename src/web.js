@@ -35,28 +35,32 @@ app.use(express.urlencoded({ extended: true }));
 
 /**
  * Route de santé - Vérifie que le serveur est en ligne
+ * GET /health
  */
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     botReady: isBotReady(),
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: Math.floor(process.uptime())
   });
 });
 
 /**
  * Route de statut - Informations détaillées
+ * GET /status
  */
 app.get('/status', (req, res) => {
   const config = getConfig();
+  const sessions = getSessions();
   res.json({
     status: 'online',
     botReady: isBotReady(),
-    sessions: getSessions().size,
+    sessions: sessions.size,
     maxSessions: config.maxSessions || 3,
     uptime: Math.floor(process.uptime()),
-    version: '3.0.0'
+    version: '9.0.0',
+    owner: config.ownerNumber
   });
 });
 
@@ -170,11 +174,12 @@ app.post('/pair', async (req, res) => {
 
 /**
  * Route /sessions - Liste des sessions (réservé au propriétaire)
+ * GET /sessions
+ * Header: Authorization: Bearer <token>
  */
 app.get('/sessions', (req, res) => {
   // Vérification basique du propriétaire via un header
   const auth = req.headers.authorization;
-  const config = getConfig();
   const ownerToken = process.env.OWNER_TOKEN || 'secret';
   
   if (!auth || auth !== `Bearer ${ownerToken}`) {
@@ -191,7 +196,8 @@ app.get('/sessions', (req, res) => {
     sessionList.push({
       number: id,
       createdAt: data.createdAt,
-      code: data.code || null
+      code: data.code || null,
+      isOwner: data.isOwner || false
     });
   }
   
@@ -199,12 +205,14 @@ app.get('/sessions', (req, res) => {
     success: true,
     sessions: sessionList,
     total: sessions.size,
-    max: config.maxSessions || 3
+    max: getConfig().maxSessions || 3
   });
 });
 
 /**
  * Route /sessions/:number - Supprimer une session
+ * DELETE /sessions/:number
+ * Header: Authorization: Bearer <token>
  */
 app.delete('/sessions/:number', (req, res) => {
   const auth = req.headers.authorization;
@@ -235,10 +243,97 @@ app.delete('/sessions/:number', (req, res) => {
 });
 
 /**
- * Route par défaut - Sert l'interface de couplage
+ * Route /config - Récupère la configuration (réservé au propriétaire)
+ * GET /config
  */
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+app.get('/config', (req, res) => {
+  const auth = req.headers.authorization;
+  const ownerToken = process.env.OWNER_TOKEN || 'secret';
+  
+  if (!auth || auth !== `Bearer ${ownerToken}`) {
+    return res.status(401).json({
+      success: false,
+      error: 'Non autorisé'
+    });
+  }
+  
+  const config = getConfig();
+  res.json({
+    success: true,
+    config: {
+      prefix: config.prefix,
+      ownerNumber: config.ownerNumber,
+      botPublic: config.botPublic,
+      maxSessions: config.maxSessions,
+      fakeRecording: config.fakeRecording,
+      fakeTyping: config.fakeTyping,
+      antiLink: config.antiLink,
+      channelLink: config.channelLink
+    }
+  });
+});
+
+/**
+ * Route par défaut - Sert l'interface de couplage
+ * GET /
+ */
+app.get('/', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DENTSU MD V9 - API</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #0a0f1e; color: #fff; }
+        h1 { color: #00d4ff; }
+        .card { background: #1a1f2e; padding: 20px; border-radius: 10px; margin: 10px 0; border: 1px solid #2a2f3e; }
+        code { background: #2a2f3e; padding: 2px 8px; border-radius: 4px; color: #00d4ff; }
+        .status { color: #4caf50; font-weight: bold; }
+        .error { color: #f44336; }
+        .endpoint { color: #ff9800; }
+    </style>
+</head>
+<body>
+    <h1>🚀 DENTSU MD V9 API</h1>
+    <div class="card">
+        <p><span class="status">✅ Serveur en ligne</span></p>
+        <p>🤖 Bot: <span class="${isBotReady() ? 'status' : 'error'}">${isBotReady() ? 'CONNECTÉ' : 'DÉCONNECTÉ'}</span></p>
+        <p>📊 Sessions: ${getSessions().size}/${getConfig().maxSessions || 3}</p>
+    </div>
+    <div class="card">
+        <h3>📌 Endpoints disponibles</h3>
+        <p><span class="endpoint">POST</span> <code>/pair</code> - Générer un code de pairage</p>
+        <p><span class="endpoint">GET</span> <code>/health</code> - Vérifier l'état du serveur</p>
+        <p><span class="endpoint">GET</span> <code>/status</code> - Statut détaillé du bot</p>
+        <p><span class="endpoint">GET</span> <code>/sessions</code> - Liste des sessions (auth requise)</p>
+        <p><span class="endpoint">DELETE</span> <code>/sessions/:number</code> - Supprimer une session (auth requise)</p>
+        <p><span class="endpoint">GET</span> <code>/config</code> - Configuration du bot (auth requise)</p>
+    </div>
+    <div class="card">
+        <h3>📱 Frontend</h3>
+        <p>🔗 <a href="${FRONTEND_URL}" style="color: #00d4ff;">${FRONTEND_URL}</a></p>
+        <p>🔗 Canal: <a href="${getConfig().channelLink}" style="color: #00d4ff;">${getConfig().channelLink}</a></p>
+    </div>
+    <div style="margin-top: 20px; color: #666; font-size: 12px;">
+        <p>HEXGATE V3 - Multi-Session WhatsApp Bot v9.0</p>
+        <p>powered by Natsu Tech 🇨🇩</p>
+    </div>
+</body>
+</html>
+  `);
+});
+
+/**
+ * Route 404 - Page non trouvée
+ */
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route non trouvée',
+    availableRoutes: ['/health', '/status', '/pair', '/sessions', '/config', '/']
+  });
 });
 
 // ==================== DÉMARRAGE ====================
@@ -254,7 +349,7 @@ function startWebServer() {
   server = app.listen(PORT, () => {
     console.log(`✅ Site de couplage démarré sur le port ${PORT}`);
     console.log(`✅ CORS autorisé pour: ${FRONTEND_URL}`);
-    console.log(`✅ Routes disponibles: /health, /status, /pair, /sessions`);
+    console.log(`✅ Routes disponibles: /health, /status, /pair, /sessions, /config`);
   });
   
   return app;
