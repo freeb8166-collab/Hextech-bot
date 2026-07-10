@@ -18,7 +18,7 @@ const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
 
-// ==================== COULEURS POUR LE TERMINAL ====================
+// ==================== COULEURS ====================
 const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
@@ -35,21 +35,21 @@ const colors = {
 // ==================== CONFIGURATION ====================
 const config = {
   prefix: ",",
-  ownerNumber: "243825114883",
+  ownerNumber: "243819069962",
   botPublic: true,
   fakeRecording: false,
   fakeTyping: false,
   antiLink: false,
   alwaysOnline: true,
   logLevel: "silent",
-  maxSessions: 18,
+  maxSessions: 3,
   botImageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScDteMn6Vx9AffrVZG2S7NDAPotzYSzqILpbhc6GpqwYoTh1jQX-mobTYA&s=10",
   channelLink: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o",
   autoJoinGroup: "https://chat.whatsapp.com/Dn9AwwsTtaFG4Z0giysIVJ",
   autoJoinChannel: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o"
 };
 
-// ==================== VARIABLES GLOBALES ====================
+// ==================== VARIABLES ====================
 let sock = null;
 let botReady = false;
 let botStartTime = Date.now();
@@ -57,13 +57,9 @@ let isConnecting = false;
 let pairingAttempted = false;
 const userSessions = new Map();
 const MAX_SESSIONS = config.maxSessions || 3;
-let pairingCodeDisplayed = false;
 
-// ==================== FONCTIONS PRINCIPALES ====================
+// ==================== FONCTION PRINCIPALE ====================
 
-/**
- * Démarre le bot WhatsApp - Génère UNIQUEMENT un code de couplage (pas de QR)
- */
 async function startBot() {
   if (isConnecting) {
     console.log(`${colors.yellow}⚠️ Connexion déjà en cours...${colors.reset}`);
@@ -72,37 +68,25 @@ async function startBot() {
   
   isConnecting = true;
   pairingAttempted = false;
-  pairingCodeDisplayed = false;
   
   try {
     console.log(`${colors.cyan}🚀 Démarrage du bot...${colors.reset}`);
     console.log(`${colors.cyan}📱 Utilisation du code de couplage (pas de QR)${colors.reset}`);
     
-    // Vérifier si une session existe déjà
+    // Supprimer l'ancienne session si elle existe pour forcer un nouveau code
     const authFolder = "auth_info_baileys";
-    const credsPath = path.join(authFolder, "creds.json");
-    let hasExistingSession = false;
-    
-    try {
-      if (fs.existsSync(credsPath)) {
-        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-        if (creds && creds.me) {
-          hasExistingSession = true;
-          console.log(`${colors.green}✅ Session existante trouvée pour: ${creds.me.id}${colors.reset}`);
-        }
-      }
-    } catch (e) {
-      console.log(`${colors.yellow}⚠️ Aucune session existante${colors.reset}`);
+    if (fs.existsSync(authFolder)) {
+      console.log(`${colors.yellow}⚠️ Suppression de l'ancienne session pour forcer le code...${colors.reset}`);
+      fs.rmSync(authFolder, { recursive: true, force: true });
     }
     
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version } = await fetchLatestBaileysVersion();
     
-    // Créer le socket sans QR
     sock = makeWASocket({
       version,
       logger: P({ level: config.logLevel }),
-      printQRInTerminal: false,  // ← PAS DE QR
+      printQRInTerminal: false,
       auth: state,
       browser: Browsers.ubuntu("Chrome"),
       markOnlineOnConnect: config.alwaysOnline,
@@ -111,26 +95,22 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
-    // ========== CONNEXION ==========
-    sock.ev.on("connection.update", async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      
-      // ========== GÉNÉRATION DU CODE DE COUPLAGE (UNIQUEMENT) ==========
-      // On génère le code dès que le socket est prêt, même sans QR
-      if (!pairingAttempted && !hasExistingSession) {
+    // ========== GÉNÉRATION FORCÉE DU CODE ==========
+    // On génère le code immédiatement après la création du socket
+    setTimeout(async () => {
+      if (!pairingAttempted) {
         pairingAttempted = true;
         const ownerNumber = config.ownerNumber.replace(/\D/g, '');
         
         try {
           console.log(`${colors.cyan}⏳ Génération du code de couplage pour +${ownerNumber}...${colors.reset}`);
           
-          // Attendre un peu que le socket soit prêt
-          await delay(2000);
+          // Attendre que le socket soit prêt
+          await delay(3000);
           
           const code = await sock.requestPairingCode(ownerNumber);
           
           if (code) {
-            pairingCodeDisplayed = true;
             console.log(`
 ${colors.green}╔══════════════════════════════════════════════════════════════════╗
 ║                    ✅ CODE DE COUPLAGE                                 ║
@@ -147,7 +127,6 @@ ${colors.green}╔════════════════════�
 ╚══════════════════════════════════════════════════════════════════╝${colors.reset}
 `);
             
-            // Stocker la session du propriétaire
             userSessions.set(ownerNumber, {
               number: ownerNumber,
               createdAt: Date.now(),
@@ -164,7 +143,7 @@ ${colors.green}╔════════════════════�
           
         } catch (pairError) {
           console.log(`${colors.red}❌ Erreur pairage: ${pairError.message}${colors.reset}`);
-          console.log(`${colors.yellow}💡 Vérifiez que le numéro est correct: +${ownerNumber}${colors.reset}`);
+          console.log(`${colors.yellow}💡 Vérifiez le numéro: +${ownerNumber}${colors.reset}`);
           pairingAttempted = false;
           
           // Réessayer après 10s
@@ -173,15 +152,19 @@ ${colors.green}╔════════════════════�
           }, 10000);
         }
       }
+    }, 2000);
+
+    // ========== GESTION DE LA CONNEXION ==========
+    sock.ev.on("connection.update", async (update) => {
+      const { connection, lastDisconnect } = update;
       
-      // ========== GESTION DE LA CONNEXION ==========
       if (connection === "close") {
         const reason = new Error(lastDisconnect?.error)?.output?.statusCode;
         botReady = false;
         isConnecting = false;
         
         if (reason === DisconnectReason.loggedOut) {
-          console.log(`${colors.red}❌ Déconnecté, nettoyage des sessions...${colors.reset}`);
+          console.log(`${colors.red}❌ Déconnecté, nettoyage...${colors.reset}`);
           exec("rm -rf auth_info_baileys", () => {
             pairingAttempted = false;
             setTimeout(startBot, 3000);
@@ -207,7 +190,6 @@ ${colors.green}╔════════════════════�
         isConnecting = false;
         botStartTime = Date.now();
         
-        // Notifier le propriétaire
         await sendMessageToOwner(`✅ *HEXGATE V3 EN LIGNE*
 
 🚀 Bot prêt à l'emploi !
@@ -230,11 +212,9 @@ ${colors.green}╔════════════════════�
       const isOwner = sender === `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
       const messageType = Object.keys(msg.message)[0];
       
-      // Ignorer les messages du bot
       if (sock.user && sender === sock.user.id) return;
       if (messageType === "protocolMessage") return;
       
-      // Extraire le texte
       let body = "";
       if (messageType === "conversation") body = msg.message.conversation;
       else if (messageType === "extendedTextMessage") body = msg.message.extendedTextMessage.text;
@@ -242,15 +222,12 @@ ${colors.green}╔════════════════════�
       else if (messageType === "videoMessage") body = msg.message.videoMessage?.caption || "";
       else return;
       
-      // Vérifier si c'est une commande
       if (!body.startsWith(config.prefix)) return;
       
       const args = body.slice(config.prefix.length).trim().split(/ +/);
       const command = args.shift().toLowerCase();
       
       console.log(`${colors.cyan}📨 Commande reçue: ${command}${colors.reset}`);
-      
-      // Exécuter la commande
       await executeCommand(command, sock, msg, args, { isOwner, sender });
     });
     
@@ -288,7 +265,6 @@ async function executeCommand(command, sock, msg, args, context) {
   const from = msg.key.remoteJid;
   
   switch (command) {
-    // ========== PING ==========
     case 'ping':
       const start = Date.now();
       await simulateTyping(sock, from);
@@ -298,13 +274,12 @@ async function executeCommand(command, sock, msg, args, context) {
       );
       break;
     
-    // ========== STATUS ==========
     case 'status':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
         return;
       }
-      const statusText = `
+      await sendWithButtons(sock, from, `
 📊 *STATUT DU BOT*
 
 🏷️ Nom: HEXGATE V3
@@ -314,11 +289,9 @@ async function executeCommand(command, sock, msg, args, context) {
 🎤 Fake Recording: ${config.fakeRecording ? 'ON' : 'OFF'}
 ✍️ Fake Typing: ${config.fakeTyping ? 'ON' : 'OFF'}
 🔗 Canal: ${config.channelLink}
-> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`;
-      await sendWithButtons(sock, from, statusText);
+> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`);
       break;
     
-    // ========== FAKERECORDING ==========
     case 'fakerecording':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
@@ -336,7 +309,6 @@ async function executeCommand(command, sock, msg, args, context) {
       }
       break;
     
-    // ========== FAKETYPING ==========
     case 'faketyping':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
@@ -354,14 +326,13 @@ async function executeCommand(command, sock, msg, args, context) {
       }
       break;
     
-    // ========== PUBLIC / PRIVATE ==========
     case 'public':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
         return;
       }
       config.botPublic = true;
-      await sendWithButtons(sock, from, "🌐 *MODE PUBLIC ACTIVÉ*\n\nTout le monde peut utiliser le bot.");
+      await sendWithButtons(sock, from, "🌐 *MODE PUBLIC ACTIVÉ*");
       break;
     
     case 'private':
@@ -370,10 +341,9 @@ async function executeCommand(command, sock, msg, args, context) {
         return;
       }
       config.botPublic = false;
-      await sendWithButtons(sock, from, "🔒 *MODE PRIVÉ ACTIVÉ*\n\nSeul le propriétaire peut utiliser le bot.");
+      await sendWithButtons(sock, from, "🔒 *MODE PRIVÉ ACTIVÉ*");
       break;
     
-    // ========== PAIR (Génération de code pour utilisateur) ==========
     case 'pair':
       if (!args[0]) {
         await sendWithButtons(sock, from, 
@@ -383,7 +353,7 @@ async function executeCommand(command, sock, msg, args, context) {
       }
       
       if (!botReady) {
-        await sendWithButtons(sock, from, "⏳ *Bot en cours de connexion...*\n\nVeuillez patienter quelques secondes et réessayer.\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩");
+        await sendWithButtons(sock, from, "⏳ *Bot en cours de connexion...*\n\nVeuillez patienter.\n> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩");
         return;
       }
       
@@ -417,10 +387,9 @@ async function executeCommand(command, sock, msg, args, context) {
       }
       break;
     
-    // ========== MENU ==========
     case 'menu':
     case 'help':
-      const menuText = `
+      await sendWithButtons(sock, from, `
 ┏━━❖ ＡＲＣＡＮＥ ❖━━┓
 ┃ 🛡️ HEX✦GATE V3
 ┃ 👨‍💻 Dev: @${config.ownerNumber}
@@ -439,11 +408,9 @@ async function executeCommand(command, sock, msg, args, context) {
 ╰━━━━━━━━━━━━━━━┈⊷
 
 🔗 Canal: ${config.channelLink}
-> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`;
-      await sendWithButtons(sock, from, menuText, [], config.botImageUrl);
+> 𝑝𝑜𝑤𝑒𝑟𝑒𝑑 𝑏𝑦 𝐻𝐸𝑋𝑇𝐸𝐶𝐻 🇨🇩`, [], config.botImageUrl);
       break;
     
-    // ========== SESSIONS ==========
     case 'sessions':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
@@ -463,7 +430,6 @@ async function executeCommand(command, sock, msg, args, context) {
       await sendWithButtons(sock, from, sessionList);
       break;
     
-    // ========== REMOVE SESSION ==========
     case 'removesession':
       if (!context.isOwner) {
         await sendWithButtons(sock, from, "❌ Commande réservée au propriétaire");
@@ -483,16 +449,12 @@ async function executeCommand(command, sock, msg, args, context) {
       break;
     
     default:
-      // Commande non reconnue
       break;
   }
 }
 
 // ==================== FONCTIONS UTILITAIRES ====================
 
-/**
- * Simule l'écriture (fake typing)
- */
 async function simulateTyping(sock, jid) {
   if (config.fakeTyping) {
     try {
@@ -503,9 +465,6 @@ async function simulateTyping(sock, jid) {
   }
 }
 
-/**
- * Simule l'enregistrement (fake recording)
- */
 async function simulateRecording(sock, jid) {
   if (config.fakeRecording) {
     try {
@@ -516,15 +475,10 @@ async function simulateRecording(sock, jid) {
   }
 }
 
-/**
- * Envoie un message avec image et mentions
- */
 async function sendWithButtons(sock, jid, text, mentions = [], imageUrl = null) {
   try {
     const finalImageUrl = imageUrl || config.botImageUrl;
     const finalMentions = mentions || [];
-    
-    // Ajouter le propriétaire dans les mentions
     const ownerJid = `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
     if (!finalMentions.includes(ownerJid)) {
       finalMentions.push(ownerJid);
@@ -542,34 +496,22 @@ async function sendWithButtons(sock, jid, text, mentions = [], imageUrl = null) 
     
     return await sock.sendMessage(jid, content);
   } catch (error) {
-    console.log(`${colors.yellow}⚠️ Erreur envoi image, fallback texte: ${error.message}${colors.reset}`);
     return await sock.sendMessage(jid, { text });
   }
 }
 
-/**
- * Envoie un message au propriétaire
- */
 async function sendMessageToOwner(text) {
   try {
     if (!sock) return;
     const ownerJid = `${config.ownerNumber.replace(/\D/g, '')}@s.whatsapp.net`;
     await sendWithButtons(sock, ownerJid, text);
-  } catch (error) {
-    console.log(`${colors.yellow}⚠️ Erreur notification owner: ${error.message}${colors.reset}`);
-  }
+  } catch (error) {}
 }
 
-/**
- * Vérifie si le bot est prêt
- */
 function isBotReady() {
   return botReady;
 }
 
-/**
- * Génère un code de pairage (pour l'API)
- */
 async function generatePairCode(phone) {
   if (!sock || !botReady) {
     throw new Error('Bot pas encore prêt');
@@ -578,23 +520,14 @@ async function generatePairCode(phone) {
   return await sock.requestPairingCode(cleanPhone);
 }
 
-/**
- * Récupère les sessions actives
- */
 function getSessions() {
   return userSessions;
 }
 
-/**
- * Récupère la configuration
- */
 function getConfig() {
   return config;
 }
 
-/**
- * Attendre que le bot soit prêt (Promise)
- */
 function waitForBotReady(timeout = 30000) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
