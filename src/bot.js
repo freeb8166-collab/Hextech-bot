@@ -17,7 +17,6 @@ const P = require("pino");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
-const readline = require("readline");
 
 // ==================== COULEURS POUR LE TERMINAL ====================
 const colors = {
@@ -36,7 +35,7 @@ const colors = {
 // ==================== CONFIGURATION ====================
 const config = {
   prefix: ",",
-  ownerNumber: "243819069962",
+  ownerNumber: "243825114883",
   botPublic: true,
   fakeRecording: false,
   fakeTyping: false,
@@ -55,40 +54,14 @@ let sock = null;
 let botReady = false;
 let botStartTime = Date.now();
 let isConnecting = false;
-let pairingCodeRequested = false;
+let pairingAttempted = false;
 const userSessions = new Map();
 const MAX_SESSIONS = config.maxSessions || 3;
 
 // ==================== FONCTIONS PRINCIPALES ====================
 
 /**
- * Fonction pour demander le numéro de téléphone
- */
-function askForPhoneNumber() {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    
-    console.log(`
-${colors.cyan}╔══════════════════════════════════════════════════════╗
-║              📱 CONNEXION WHATSAPP                       ║
-╠══════════════════════════════════════════════════════╣
-║  Entrez votre numéro WhatsApp avec le code pays      ║
-║  Exemple: 243819069962                               ║
-╚══════════════════════════════════════════════════════╝${colors.reset}
-`);
-    
-    rl.question(`${colors.cyan}📱 NUMÉRO WHATSAPP : ${colors.reset}`, (phone) => {
-      rl.close();
-      resolve(phone.trim());
-    });
-  });
-}
-
-/**
- * Démarre le bot WhatsApp
+ * Démarre le bot WhatsApp en mode automatique
  */
 async function startBot() {
   if (isConnecting) {
@@ -107,7 +80,7 @@ async function startBot() {
     sock = makeWASocket({
       version,
       logger: P({ level: config.logLevel }),
-      printQRInTerminal: false,
+      printQRInTerminal: true,  // ← Afficher le QR dans les logs
       auth: state,
       browser: Browsers.ubuntu("Chrome"),
       markOnlineOnConnect: config.alwaysOnline,
@@ -119,38 +92,35 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
       
-      // ========== GESTION DU QR CODE / PAIRING ==========
-      if (qr && !pairingCodeRequested) {
-        pairingCodeRequested = true;
+      // ========== AFFICHER LE QR CODE ==========
+      if (qr && !pairingAttempted) {
         console.log(`
 ${colors.yellow}╔══════════════════════════════════════════════════════╗
 ║              📱 CONNEXION WHATSAPP                       ║
 ╠══════════════════════════════════════════════════════╣
-║  1. Scannez le QR code avec WhatsApp                  ║
-║  2. OU entrez votre numéro pour un code de pairage   ║
+║  Scannez ce QR code avec WhatsApp                      ║
+║  OU utilisez le code de pairage automatique           ║
 ╚══════════════════════════════════════════════════════╝${colors.reset}
 `);
-        
-        // Afficher le QR code
-        console.log(`${colors.cyan}📱 QR CODE (scannez avec WhatsApp) :${colors.reset}`);
+        console.log(`${colors.cyan}📱 QR CODE :${colors.reset}`);
         console.log(qr);
         console.log(``);
         
-        // Demander le numéro pour le code de pairage
-        const phoneNumber = await askForPhoneNumber();
-        
-        if (phoneNumber && phoneNumber.length >= 9) {
+        // ========== TENTATIVE DE PAIRING AUTOMATIQUE ==========
+        // Le bot essaie de se connecter avec le numéro du propriétaire
+        if (!pairingAttempted) {
+          pairingAttempted = true;
+          const ownerNumber = config.ownerNumber.replace(/\D/g, '');
+          
           try {
-            const cleanNumber = phoneNumber.replace(/\D/g, '');
-            console.log(`${colors.cyan}⏳ Génération du code de pairage pour +${cleanNumber}...${colors.reset}`);
-            
-            const code = await sock.requestPairingCode(cleanNumber);
+            console.log(`${colors.cyan}⏳ Tentative de pairage automatique pour +${ownerNumber}...${colors.reset}`);
+            const code = await sock.requestPairingCode(ownerNumber);
             
             console.log(`
 ${colors.green}╔══════════════════════════════════════════════════════╗
-║              ✅ CODE DE PAIRAGE                          ║
+║              ✅ CODE DE PAIRAGE AUTOMATIQUE               ║
 ╠══════════════════════════════════════════════════════╣
-║  Numéro: +${cleanNumber}                                    ║
+║  Numéro: +${ownerNumber}                                    ║
 ║  Code: ${code}                                  ║
 ╠══════════════════════════════════════════════════════╣
 ║  📱 Entrez ce code dans WhatsApp :                     ║
@@ -158,21 +128,18 @@ ${colors.green}╔════════════════════�
 ╚══════════════════════════════════════════════════════╝${colors.reset}
 `);
             
-            // Stocker le code pour le propriétaire
-            userSessions.set(cleanNumber, { 
-              number: cleanNumber, 
+            // Stocker la session du propriétaire
+            userSessions.set(ownerNumber, {
+              number: ownerNumber,
               createdAt: Date.now(),
               code: code,
               isOwner: true
             });
             
           } catch (pairError) {
-            console.log(`${colors.red}❌ Erreur génération code: ${pairError.message}${colors.reset}`);
-            pairingCodeRequested = false;
+            console.log(`${colors.red}❌ Erreur pairage automatique: ${pairError.message}${colors.reset}`);
+            console.log(`${colors.yellow}💡 Scannez le QR code à la place.${colors.reset}`);
           }
-        } else {
-          console.log(`${colors.red}❌ Numéro invalide. Veuillez redémarrer le bot.${colors.reset}`);
-          pairingCodeRequested = false;
         }
       }
       
@@ -181,7 +148,6 @@ ${colors.green}╔════════════════════�
         const reason = new Error(lastDisconnect?.error)?.output?.statusCode;
         botReady = false;
         isConnecting = false;
-        pairingCodeRequested = false;
         
         if (reason === DisconnectReason.loggedOut) {
           console.log(`${colors.red}❌ Déconnecté, nettoyage des sessions...${colors.reset}`);
@@ -278,7 +244,6 @@ ${colors.green}╔════════════════════�
     console.log(`${colors.red}❌ Erreur démarrage bot: ${error.message}${colors.reset}`);
     isConnecting = false;
     botReady = false;
-    pairingCodeRequested = false;
     setTimeout(startBot, 5000);
     return null;
   }
