@@ -360,7 +360,7 @@ function syncCodeInSteps() {
 }
 
 // ═══ CONFIGURATION DE L'API ═══
-// URL du backend sur Railway
+// URL du backend sur Railway (Mise à jour avec la nouvelle URL)
 const API_BASE_URL = 'https://dentsu-md-v9-production-5cfd.up.railway.app';
 
 // ═══ INITIALISATION ═══
