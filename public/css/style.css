@@ -1,0 +1,471 @@
+/* style.css - Styles du frontend */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+/* ── OVERLAY LANGUE ────────────────────────────────────────────── */
+#langOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 10, 15, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+}
+
+.lang-overlay-content {
+  background: #1a1a2e;
+  padding: 40px;
+  border-radius: 20px;
+  max-width: 600px;
+  width: 90%;
+  border: 1px solid #2a2a4e;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+}
+
+.lang-overlay-content h2 {
+  text-align: center;
+  font-size: 1.5rem;
+  margin-bottom: 30px;
+  color: #fff;
+}
+
+.lang-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.flag-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  background: #2a2a4e;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #ccc;
+  font-size: 0.8rem;
+}
+
+.flag-mini:hover {
+  background: #3a3a6e;
+  transform: translateY(-2px);
+}
+
+.flag-mini.active-flag {
+  border-color: #00ff88;
+  background: #1a3a2e;
+  color: #00ff88;
+}
+
+.flag-mini img {
+  width: 40px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.flag-mini span {
+  font-weight: 500;
+}
+
+/* ── CONTENEUR PRINCIPAL ────────────────────────────────────────── */
+.container {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── EN-TÊTE ────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid #1a1a2e;
+  margin-bottom: 30px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bot-icon {
+  font-size: 2rem;
+}
+
+.header h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00ff88, #00ccff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 4px 12px;
+  background: #1a1a2e;
+  border-radius: 20px;
+  color: #888;
+  border: 1px solid #2a2a4e;
+}
+
+/* ── CARTES ────────────────────────────────────────────────────── */
+.card {
+  background: #12121f;
+  border-radius: 16px;
+  padding: 30px;
+  margin-bottom: 20px;
+  border: 1px solid #1a1a2e;
+}
+
+.connect-card h2 {
+  font-size: 1.4rem;
+  margin-bottom: 10px;
+  color: #fff;
+}
+
+.subtitle {
+  color: #888;
+  font-size: 0.95rem;
+  margin-bottom: 25px;
+}
+
+/* ── FORMULAIRE ────────────────────────────────────────────────── */
+.input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.input-group input {
+  flex: 1;
+  padding: 14px 18px;
+  background: #1a1a2e;
+  border: 2px solid #2a2a4e;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+  outline: none;
+}
+
+.input-group input:focus {
+  border-color: #00ff88;
+}
+
+.input-group input::placeholder {
+  color: #555;
+}
+
+.input-group button {
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #00ff88, #00cc66);
+  border: none;
+  border-radius: 12px;
+  color: #0a0a0f;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.input-group button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 255, 136, 0.3);
+}
+
+.input-group button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 8px;
+}
+
+.hint strong {
+  color: #00ff88;
+}
+
+/* ── SPINNER ──────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0a0a0f;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── RÉSULTAT ────────────────────────────────────────────────── */
+.result {
+  padding: 14px 18px;
+  border-radius: 12px;
+  margin-top: 20px;
+  font-weight: 500;
+  display: none;
+}
+
+.result.success {
+  background: #0a2a1a;
+  border: 1px solid #00ff8844;
+  color: #00ff88;
+  display: block;
+}
+
+.result.error {
+  background: #2a0a0a;
+  border: 1px solid #ff444444;
+  color: #ff6666;
+  display: block;
+}
+
+/* ── CODE ────────────────────────────────────────────────────── */
+.code-container {
+  margin-top: 20px;
+  padding: 20px;
+  background: #0a0a15;
+  border-radius: 12px;
+  border: 1px solid #1a1a2e;
+}
+
+.code-container p {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.code-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.code-box #codeValue {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: #00ff88;
+  letter-spacing: 4px;
+}
+
+.code-box button {
+  padding: 10px 18px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4e;
+  border-radius: 8px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.85rem;
+}
+
+.code-box button:hover {
+  background: #2a2a4e;
+  border-color: #00ff88;
+  color: #fff;
+}
+
+.warning {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #ffaa44;
+}
+
+.warning strong {
+  color: #ff6644;
+}
+
+/* ── ÉTAPES ────────────────────────────────────────────────────── */
+.steps-container {
+  margin-top: 20px;
+  padding: 20px;
+  background: #0a0a15;
+  border-radius: 12px;
+  border: 1px solid #1a1a2e;
+}
+
+.steps-title {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+#stepsList {
+  list-style: none;
+  padding: 0;
+}
+
+#stepsList li {
+  padding: 8px 0 8px 28px;
+  position: relative;
+  color: #ccc;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border-bottom: 1px solid #1a1a2e;
+}
+
+#stepsList li:last-child {
+  border-bottom: none;
+}
+
+#stepsList li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: #00ff88;
+  font-weight: 700;
+}
+
+#stepsList li strong {
+  color: #fff;
+}
+
+#stepsList li strong#codeInSteps {
+  color: #00ff88;
+  font-size: 1.1rem;
+  padding: 2px 8px;
+  background: #0a0a15;
+  border-radius: 4px;
+}
+
+/* ── LIENS SOCIAUX ───────────────────────────────────────────── */
+.social-card {
+  padding: 20px 30px;
+}
+
+.social-links {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.social-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #1a1a2e;
+  border-radius: 12px;
+  color: #ccc;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  border: 1px solid #2a2a4e;
+}
+
+.social-btn:hover {
+  background: #2a2a4e;
+  transform: translateY(-2px);
+  border-color: #00ff8844;
+}
+
+.social-btn.channel:hover { border-color: #25D366; }
+.social-btn.group:hover { border-color: #34B7F1; }
+.social-btn.telegram:hover { border-color: #0088cc; }
+
+/* ── PIED DE PAGE ───────────────────────────────────────────── */
+.footer {
+  text-align: center;
+  padding: 20px 0;
+  color: #444;
+  font-size: 0.8rem;
+  border-top: 1px solid #1a1a2e;
+  margin-top: 10px;
+}
+
+/* ── RESPONSIVE ────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .lang-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  
+  .flag-mini {
+    padding: 8px 4px;
+    font-size: 0.7rem;
+  }
+  
+  .flag-mini img {
+    width: 30px;
+    height: 22px;
+  }
+  
+  .card {
+    padding: 20px;
+  }
+  
+  .input-group {
+    flex-direction: column;
+  }
+  
+  .input-group button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .code-box {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+  
+  .code-box #codeValue {
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+  }
+  
+  .code-box button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .header h1 {
+    font-size: 1rem;
+  }
+  
+  .badge {
+    font-size: 0.6rem;
+    padding: 2px 10px;
+  }
+}
