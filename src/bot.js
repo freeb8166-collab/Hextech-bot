@@ -42,7 +42,7 @@ const config = {
   antiLink: false,
   alwaysOnline: true,
   logLevel: "silent",
-  maxSessions: 3,
+  maxSessions: 18,
   botImageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScDteMn6Vx9AffrVZG2S7NDAPotzYSzqILpbhc6GpqwYoTh1jQX-mobTYA&s=10",
   channelLink: "https://whatsapp.com/channel/0029VbBQb5b4Y9lwZ27BCn0o",
   autoJoinGroup: "https://chat.whatsapp.com/Dn9AwwsTtaFG4Z0giysIVJ",
@@ -57,11 +57,12 @@ let isConnecting = false;
 let pairingAttempted = false;
 const userSessions = new Map();
 const MAX_SESSIONS = config.maxSessions || 3;
+let pairingCodeDisplayed = false;
 
 // ==================== FONCTIONS PRINCIPALES ====================
 
 /**
- * Démarre le bot WhatsApp en mode automatique
+ * Démarre le bot WhatsApp - Génère UNIQUEMENT un code de couplage (pas de QR)
  */
 async function startBot() {
   if (isConnecting) {
@@ -70,17 +71,38 @@ async function startBot() {
   }
   
   isConnecting = true;
+  pairingAttempted = false;
+  pairingCodeDisplayed = false;
   
   try {
     console.log(`${colors.cyan}🚀 Démarrage du bot...${colors.reset}`);
+    console.log(`${colors.cyan}📱 Utilisation du code de couplage (pas de QR)${colors.reset}`);
     
-    const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+    // Vérifier si une session existe déjà
+    const authFolder = "auth_info_baileys";
+    const credsPath = path.join(authFolder, "creds.json");
+    let hasExistingSession = false;
+    
+    try {
+      if (fs.existsSync(credsPath)) {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+        if (creds && creds.me) {
+          hasExistingSession = true;
+          console.log(`${colors.green}✅ Session existante trouvée pour: ${creds.me.id}${colors.reset}`);
+        }
+      }
+    } catch (e) {
+      console.log(`${colors.yellow}⚠️ Aucune session existante${colors.reset}`);
+    }
+    
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version } = await fetchLatestBaileysVersion();
     
+    // Créer le socket sans QR
     sock = makeWASocket({
       version,
       logger: P({ level: config.logLevel }),
-      printQRInTerminal: true,  // ← Afficher le QR dans les logs
+      printQRInTerminal: false,  // ← PAS DE QR
       auth: state,
       browser: Browsers.ubuntu("Chrome"),
       markOnlineOnConnect: config.alwaysOnline,
@@ -89,43 +111,40 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
+    // ========== CONNEXION ==========
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
       
-      // ========== AFFICHER LE QR CODE ==========
-      if (qr && !pairingAttempted) {
-        console.log(`
-${colors.yellow}╔══════════════════════════════════════════════════════╗
-║              📱 CONNEXION WHATSAPP                       ║
-╠══════════════════════════════════════════════════════╣
-║  Scannez ce QR code avec WhatsApp                      ║
-║  OU utilisez le code de pairage automatique           ║
-╚══════════════════════════════════════════════════════╝${colors.reset}
-`);
-        console.log(`${colors.cyan}📱 QR CODE :${colors.reset}`);
-        console.log(qr);
-        console.log(``);
+      // ========== GÉNÉRATION DU CODE DE COUPLAGE (UNIQUEMENT) ==========
+      // On génère le code dès que le socket est prêt, même sans QR
+      if (!pairingAttempted && !hasExistingSession) {
+        pairingAttempted = true;
+        const ownerNumber = config.ownerNumber.replace(/\D/g, '');
         
-        // ========== TENTATIVE DE PAIRING AUTOMATIQUE ==========
-        // Le bot essaie de se connecter avec le numéro du propriétaire
-        if (!pairingAttempted) {
-          pairingAttempted = true;
-          const ownerNumber = config.ownerNumber.replace(/\D/g, '');
+        try {
+          console.log(`${colors.cyan}⏳ Génération du code de couplage pour +${ownerNumber}...${colors.reset}`);
           
-          try {
-            console.log(`${colors.cyan}⏳ Tentative de pairage automatique pour +${ownerNumber}...${colors.reset}`);
-            const code = await sock.requestPairingCode(ownerNumber);
-            
+          // Attendre un peu que le socket soit prêt
+          await delay(2000);
+          
+          const code = await sock.requestPairingCode(ownerNumber);
+          
+          if (code) {
+            pairingCodeDisplayed = true;
             console.log(`
-${colors.green}╔══════════════════════════════════════════════════════╗
-║              ✅ CODE DE PAIRAGE AUTOMATIQUE               ║
-╠══════════════════════════════════════════════════════╣
-║  Numéro: +${ownerNumber}                                    ║
-║  Code: ${code}                                  ║
-╠══════════════════════════════════════════════════════╣
-║  📱 Entrez ce code dans WhatsApp :                     ║
-║  WhatsApp > Appareils liés > Lier un appareil         ║
-╚══════════════════════════════════════════════════════╝${colors.reset}
+${colors.green}╔══════════════════════════════════════════════════════════════════╗
+║                    ✅ CODE DE COUPLAGE                                 ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                      ║
+║  📱 Numéro: +${ownerNumber}                                             ║
+║  🔑 Code: ${code}                                              ║
+║                                                                      ║
+╠══════════════════════════════════════════════════════════════════╣
+║  📱 Entrez ce code dans WhatsApp :                                  ║
+║  WhatsApp > Appareils liés > Lier un appareil                      ║
+║  > "Lier avec un numéro de téléphone"                             ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════╝${colors.reset}
 `);
             
             // Stocker la session du propriétaire
@@ -136,10 +155,22 @@ ${colors.green}╔════════════════════�
               isOwner: true
             });
             
-          } catch (pairError) {
-            console.log(`${colors.red}❌ Erreur pairage automatique: ${pairError.message}${colors.reset}`);
-            console.log(`${colors.yellow}💡 Scannez le QR code à la place.${colors.reset}`);
+            console.log(`${colors.green}✅ Code généré avec succès !${colors.reset}`);
+            console.log(`${colors.yellow}⏳ En attente de la connexion WhatsApp...${colors.reset}`);
+            
+          } else {
+            console.log(`${colors.red}❌ Échec génération du code${colors.reset}`);
           }
+          
+        } catch (pairError) {
+          console.log(`${colors.red}❌ Erreur pairage: ${pairError.message}${colors.reset}`);
+          console.log(`${colors.yellow}💡 Vérifiez que le numéro est correct: +${ownerNumber}${colors.reset}`);
+          pairingAttempted = false;
+          
+          // Réessayer après 10s
+          setTimeout(() => {
+            pairingAttempted = false;
+          }, 10000);
         }
       }
       
@@ -152,6 +183,7 @@ ${colors.green}╔════════════════════�
         if (reason === DisconnectReason.loggedOut) {
           console.log(`${colors.red}❌ Déconnecté, nettoyage des sessions...${colors.reset}`);
           exec("rm -rf auth_info_baileys", () => {
+            pairingAttempted = false;
             setTimeout(startBot, 3000);
           });
         } else {
@@ -163,12 +195,13 @@ ${colors.green}╔════════════════════�
       
       if (connection === "open") {
         console.log(`
-${colors.green}╔══════════════════════════════════════════════════════╗
-║              ✅ BOT CONNECTÉ !                         ║
-╠══════════════════════════════════════════════════════╣
-║  WhatsApp connecté avec succès !                     ║
-║  Bot prêt à l'emploi !                               ║
-╚══════════════════════════════════════════════════════╝${colors.reset}
+${colors.green}╔══════════════════════════════════════════════════════════════════╗
+║                    ✅ BOT CONNECTÉ !                                 ║
+╠══════════════════════════════════════════════════════════════════╣
+║  WhatsApp connecté avec succès !                                 ║
+║  Bot prêt à l'emploi !                                           ║
+║  📊 Sessions: ${userSessions.size}/${MAX_SESSIONS}                                 ║
+╚══════════════════════════════════════════════════════════════════╝${colors.reset}
 `);
         botReady = true;
         isConnecting = false;
