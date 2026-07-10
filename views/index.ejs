@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html id="htmlRoot" lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= botName %></title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+
+  <!-- Sélecteur de langue - Overlay -->
+  <div id="langOverlay">
+    <div class="lang-overlay-content">
+      <h2>🌍 Choose your language</h2>
+      <div class="lang-grid">
+        <button class="flag-mini" id="flag-fr" onclick="setLang('fr')">
+          <img src="/images/flags/fr.png" alt="Français">
+          <span>Français</span>
+        </button>
+        <button class="flag-mini" id="flag-en" onclick="setLang('en')">
+          <img src="/images/flags/en.png" alt="English">
+          <span>English</span>
+        </button>
+        <button class="flag-mini" id="flag-es" onclick="setLang('es')">
+          <img src="/images/flags/es.png" alt="Español">
+          <span>Español</span>
+        </button>
+        <button class="flag-mini" id="flag-zh" onclick="setLang('zh')">
+          <img src="/images/flags/zh.png" alt="中文">
+          <span>中文</span>
+        </button>
+        <button class="flag-mini" id="flag-hi" onclick="setLang('hi')">
+          <img src="/images/flags/hi.png" alt="हिन्दी">
+          <span>हिन्दी</span>
+        </button>
+        <button class="flag-mini" id="flag-ar" onclick="setLang('ar')">
+          <img src="/images/flags/ar.png" alt="العربية">
+          <span>العربية</span>
+        </button>
+        <button class="flag-mini" id="flag-pt" onclick="setLang('pt')">
+          <img src="/images/flags/pt.png" alt="Português">
+          <span>Português</span>
+        </button>
+        <button class="flag-mini" id="flag-ru" onclick="setLang('ru')">
+          <img src="/images/flags/ru.png" alt="Русский">
+          <span>Русский</span>
+        </button>
+        <button class="flag-mini" id="flag-bn" onclick="setLang('bn')">
+          <img src="/images/flags/bn.png" alt="বাংলা">
+          <span>বাংলা</span>
+        </button>
+        <button class="flag-mini" id="flag-id" onclick="setLang('id')">
+          <img src="/images/flags/id.png" alt="Bahasa Indonesia">
+          <span>Bahasa Indonesia</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenu principal -->
+  <div id="mainContent" style="display: none;">
+    <div class="container">
+      <!-- En-tête -->
+      <header class="header">
+        <div class="logo">
+          <span class="bot-icon">🤖</span>
+          <h1><%= botName %></h1>
+        </div>
+        <span class="badge">by <%= devName %></span>
+      </header>
+
+      <!-- Contenu principal -->
+      <main>
+        <!-- Section de connexion -->
+        <section class="card connect-card">
+          <h2 data-i18n="h2_connect">📱 Connecter WhatsApp</h2>
+          <p class="subtitle" data-i18n="subtitle_connect">
+            Entre ton numéro avec le code pays pour obtenir ton code de jumelage
+          </p>
+
+          <form id="pairForm">
+            <div class="input-group">
+              <input 
+                type="tel" 
+                id="number" 
+                placeholder="242065121108" 
+                required
+                autocomplete="tel"
+                aria-label="Numéro de téléphone"
+              >
+              <button type="submit" id="pairBtn" data-i18n="btn_pair">
+                📲 Obtenir mon code
+              </button>
+            </div>
+            <p class="hint" data-i18n="hint">
+              ⚠️ Inclure le code pays sans le + (ex: <strong>242</strong>XXXXXXXX)
+            </p>
+          </form>
+
+          <!-- Résultat -->
+          <div id="result" class="result" style="display: none;"></div>
+
+          <!-- Affichage du code -->
+          <div id="codeDisplay" style="display: none;">
+            <div class="code-container">
+              <p data-i18n="code_label">🔑 Ton code de jumelage :</p>
+              <div class="code-box">
+                <span id="codeValue">123-456-789</span>
+                <button id="copyBtn" data-i18n="btn_copy">📋 Copier le code</button>
+              </div>
+              <p class="warning" data-i18n="warning">
+                ⏱️ Le code expire dans <strong>60 secondes</strong> — entre-le rapidement !
+              </p>
+            </div>
+          </div>
+
+          <!-- Étapes -->
+          <div id="steps" style="display: none;">
+            <div class="steps-container">
+              <p class="steps-title" data-i18n="steps_title">
+                📋 Comment entrer le code dans WhatsApp :
+              </p>
+              <ol id="stepsList"></ol>
+            </div>
+          </div>
+        </section>
+
+        <!-- Liens sociaux -->
+        <section class="card social-card">
+          <div class="social-links">
+            <a href="<%= channelLink %>" target="_blank" class="social-btn channel">
+              <span>📢</span> <span data-i18n="social_channel">Canal</span>
+            </a>
+            <a href="<%= groupLink %>" target="_blank" class="social-btn group">
+              <span>👥</span> <span data-i18n="social_group">Groupe</span>
+            </a>
+            <a href="<%= telegram %>" target="_blank" class="social-btn telegram">
+              <span>✈️</span> <span>Télégram</span>
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <!-- Pied de page -->
+      <footer class="footer">
+        <p data-i18n="footer">© 2025 NatsuTech • Tous droits réservés</p>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    // Passer l'URL de l'API au JavaScript
+    const API_BASE_URL = '<%= API_URL %>';
+  </script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
