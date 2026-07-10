@@ -4,7 +4,7 @@ const { startWebServer, app } = require('./src/web');
 
 console.log(`
 ╔═══════════════════════════════════════╗
-║       DENTSU MD V9 - Natsu Tech       ║
+║       DOOMSDAY MD V9 - Natsu Tech       ║
 ║    Multi-Session WhatsApp Bot v9.0    ║
 ╚═══════════════════════════════════════╝
 `);
