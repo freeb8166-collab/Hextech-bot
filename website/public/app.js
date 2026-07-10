@@ -359,6 +359,10 @@ function syncCodeInSteps() {
   if (codeInSteps && codeValue) codeInSteps.textContent = codeValue.textContent;
 }
 
+// ═══ CONFIGURATION DE L'API ═══
+// URL du backend sur Railway
+const API_BASE_URL = 'https://dentsu-md-v9-production-5cfd.up.railway.app';
+
 // ═══ INITIALISATION ═══
 window.addEventListener('DOMContentLoaded', () => {
   // Toujours montrer l'overlay pour que l'utilisateur choisisse sa langue
@@ -387,7 +391,8 @@ window.addEventListener('DOMContentLoaded', () => {
     stepsDiv.style.display = 'none';
 
     try {
-      const res = await fetch('/pair', {
+      // ✅ Utilisation de l'URL complète du backend Railway
+      const res = await fetch(`${API_BASE_URL}/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ number })
@@ -405,6 +410,7 @@ window.addEventListener('DOMContentLoaded', () => {
         showError(data.error || t('error_unknown'));
       }
     } catch (err) {
+      console.error('❌ Erreur API:', err);
       showError(t('error_network'));
     }
     btn.disabled = false;
