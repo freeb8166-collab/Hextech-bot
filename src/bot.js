@@ -17,6 +17,7 @@ const P = require("pino");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
+const readline = require("readline");
 
 // ==================== COULEURS POUR LE TERMINAL ====================
 const colors = {
@@ -54,10 +55,37 @@ let sock = null;
 let botReady = false;
 let botStartTime = Date.now();
 let isConnecting = false;
+let pairingCodeRequested = false;
 const userSessions = new Map();
 const MAX_SESSIONS = config.maxSessions || 3;
 
 // ==================== FONCTIONS PRINCIPALES ====================
+
+/**
+ * Fonction pour demander le numéro de téléphone
+ */
+function askForPhoneNumber() {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    console.log(`
+${colors.cyan}╔══════════════════════════════════════════════════════╗
+║              📱 CONNEXION WHATSAPP                       ║
+╠══════════════════════════════════════════════════════╣
+║  Entrez votre numéro WhatsApp avec le code pays      ║
+║  Exemple: 243819069962                               ║
+╚══════════════════════════════════════════════════════╝${colors.reset}
+`);
+    
+    rl.question(`${colors.cyan}📱 NUMÉRO WHATSAPP : ${colors.reset}`, (phone) => {
+      rl.close();
+      resolve(phone.trim());
+    });
+  });
+}
 
 /**
  * Démarre le bot WhatsApp
@@ -89,15 +117,74 @@ async function startBot() {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", async (update) => {
-      const { connection, lastDisconnect } = update;
+      const { connection, lastDisconnect, qr } = update;
       
+      // ========== GESTION DU QR CODE / PAIRING ==========
+      if (qr && !pairingCodeRequested) {
+        pairingCodeRequested = true;
+        console.log(`
+${colors.yellow}╔══════════════════════════════════════════════════════╗
+║              📱 CONNEXION WHATSAPP                       ║
+╠══════════════════════════════════════════════════════╣
+║  1. Scannez le QR code avec WhatsApp                  ║
+║  2. OU entrez votre numéro pour un code de pairage   ║
+╚══════════════════════════════════════════════════════╝${colors.reset}
+`);
+        
+        // Afficher le QR code
+        console.log(`${colors.cyan}📱 QR CODE (scannez avec WhatsApp) :${colors.reset}`);
+        console.log(qr);
+        console.log(``);
+        
+        // Demander le numéro pour le code de pairage
+        const phoneNumber = await askForPhoneNumber();
+        
+        if (phoneNumber && phoneNumber.length >= 9) {
+          try {
+            const cleanNumber = phoneNumber.replace(/\D/g, '');
+            console.log(`${colors.cyan}⏳ Génération du code de pairage pour +${cleanNumber}...${colors.reset}`);
+            
+            const code = await sock.requestPairingCode(cleanNumber);
+            
+            console.log(`
+${colors.green}╔══════════════════════════════════════════════════════╗
+║              ✅ CODE DE PAIRAGE                          ║
+╠══════════════════════════════════════════════════════╣
+║  Numéro: +${cleanNumber}                                    ║
+║  Code: ${code}                                  ║
+╠══════════════════════════════════════════════════════╣
+║  📱 Entrez ce code dans WhatsApp :                     ║
+║  WhatsApp > Appareils liés > Lier un appareil         ║
+╚══════════════════════════════════════════════════════╝${colors.reset}
+`);
+            
+            // Stocker le code pour le propriétaire
+            userSessions.set(cleanNumber, { 
+              number: cleanNumber, 
+              createdAt: Date.now(),
+              code: code,
+              isOwner: true
+            });
+            
+          } catch (pairError) {
+            console.log(`${colors.red}❌ Erreur génération code: ${pairError.message}${colors.reset}`);
+            pairingCodeRequested = false;
+          }
+        } else {
+          console.log(`${colors.red}❌ Numéro invalide. Veuillez redémarrer le bot.${colors.reset}`);
+          pairingCodeRequested = false;
+        }
+      }
+      
+      // ========== GESTION DE LA CONNEXION ==========
       if (connection === "close") {
         const reason = new Error(lastDisconnect?.error)?.output?.statusCode;
         botReady = false;
         isConnecting = false;
+        pairingCodeRequested = false;
         
         if (reason === DisconnectReason.loggedOut) {
-          console.log(`${colors.red}❌ Déconnecté, nettoyage...${colors.reset}`);
+          console.log(`${colors.red}❌ Déconnecté, nettoyage des sessions...${colors.reset}`);
           exec("rm -rf auth_info_baileys", () => {
             setTimeout(startBot, 3000);
           });
@@ -109,7 +196,14 @@ async function startBot() {
       }
       
       if (connection === "open") {
-        console.log(`${colors.green}✅ Bot connecté à WhatsApp !${colors.reset}`);
+        console.log(`
+${colors.green}╔══════════════════════════════════════════════════════╗
+║              ✅ BOT CONNECTÉ !                         ║
+╠══════════════════════════════════════════════════════╣
+║  WhatsApp connecté avec succès !                     ║
+║  Bot prêt à l'emploi !                               ║
+╚══════════════════════════════════════════════════════╝${colors.reset}
+`);
         botReady = true;
         isConnecting = false;
         botStartTime = Date.now();
@@ -119,7 +213,8 @@ async function startBot() {
 
 🚀 Bot prêt à l'emploi !
 📊 Commandes disponibles
-🔗 Canal: ${config.channelLink}`);
+🔗 Canal: ${config.channelLink}
+📱 Sessions: ${userSessions.size}/${MAX_SESSIONS}`);
       }
     });
 
@@ -183,6 +278,7 @@ async function startBot() {
     console.log(`${colors.red}❌ Erreur démarrage bot: ${error.message}${colors.reset}`);
     isConnecting = false;
     botReady = false;
+    pairingCodeRequested = false;
     setTimeout(startBot, 5000);
     return null;
   }
@@ -279,7 +375,7 @@ async function executeCommand(command, sock, msg, args, context) {
       await sendWithButtons(sock, from, "🔒 *MODE PRIVÉ ACTIVÉ*\n\nSeul le propriétaire peut utiliser le bot.");
       break;
     
-    // ========== PAIR (Génération de code) ==========
+    // ========== PAIR (Génération de code pour utilisateur) ==========
     case 'pair':
       if (!args[0]) {
         await sendWithButtons(sock, from, 
